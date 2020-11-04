@@ -3,7 +3,7 @@ use std::fmt;
 
 use nom::branch::alt;
 use nom::bytes::complete::tag;
-use nom::character::complete::space0;
+use nom::character::complete::{space0, space1};
 use nom::combinator::{all_consuming, map, map_opt, opt};
 use nom::error::context;
 use nom::multi::separated_list1;
@@ -445,6 +445,7 @@ fn predicates<'a>(input: &'a str) -> IResult<&'a str, Range, SemverParseError<&'
         "predicate alternatives",
         alt((
             hyphenated_range,
+            space_separated,
             x_and_asterisk_version,
             no_operation_followed_by_version,
             any_operation_followed_by_version,
@@ -453,6 +454,52 @@ fn predicates<'a>(input: &'a str) -> IResult<&'a str, Range, SemverParseError<&'
             wildcard,
         )),
     )(input)
+}
+
+fn space_separated<'a>(input: &'a str) -> IResult<&'a str, Range, SemverParseError<&'a str>> {
+    use Operation::*;
+    context(
+        "space_separated",
+        map_opt(tuple((op, preceded(space1, op))), |(left, right)| {
+            let lower = match left.0 {
+                GreaterThan => Predicate::Excluding,
+                GreaterThanEquals | Exact => Predicate::Including,
+                _ => unreachable!("wat"), // We should probably turn this into an error
+            };
+
+            let upper = match right.0 {
+                LessThan => Predicate::Excluding,
+                LessThanEquals | Exact => Predicate::Including,
+                _ => unreachable!("wat"), // We should probably turn this into an error
+            };
+
+            let (major, minor, patch, pre_release, build) = left.1;
+            let bottom = lower(Version {
+                major,
+                minor: minor.unwrap_or(0),
+                patch: patch.unwrap_or(0),
+                pre_release,
+                build,
+            });
+
+            let (major, minor, patch, pre_release, build) = right.1;
+            let top = upper(Version {
+                major,
+                minor: minor.unwrap_or(0),
+                patch: patch.unwrap_or(0),
+                pre_release,
+                build,
+            });
+
+            Range::new(Bound::Lower(bottom), Bound::Upper(top))
+        }),
+    )(input)
+}
+
+fn op<'a>(
+    input: &'a str,
+) -> IResult<&'a str, (Operation, PartialVersion), SemverParseError<&'a str>> {
+    tuple((operation, preceded(space0, partial_version)))(input)
 }
 
 fn wildcard<'a>(input: &'a str) -> IResult<&'a str, Range, SemverParseError<&'a str>> {
@@ -510,7 +557,7 @@ fn any_operation_followed_by_version<'a>(
                         patch,
                         pre_release,
                         build,
-                    })) // TODO: Pull through for the rest
+                    }))
                 }
                 (GreaterThan, (major, Some(minor), None, _, _)) => {
                     Range::at_least(Predicate::Including((major, minor + 1, 0).into()))
@@ -1291,6 +1338,7 @@ mod tests {
         whitespace_11 => ["^ 1", ">=1.0.0 <2.0.0-0"],
         whitespace_12 => ["~> 1", ">=1.0.0 <2.0.0-0"],
         whitespace_13 => ["~ 1.0", ">=1.0.0 <1.1.0-0"],
+        whitespace_14 => [">= 1.6.0 < 7.0.0", ">=1.6.0 <7.0.0"],
         beta          => ["^0.0.1-beta", ">=0.0.1-beta <0.0.2-0"],
         beta_4        => ["^1.2.3-beta.4", ">=1.2.3-beta.4 <2.0.0-0"],
         pre_release_on_both => ["1.0.0-alpha - 2.0.0-beta", ">=1.0.0-alpha <=2.0.0-beta"],
