@@ -557,7 +557,8 @@ fn any_operation_followed_by_version<'a>(
                     Range::at_least(Predicate::Excluding(partial_version.into()))
                 }
                 (LessThan, partial_version) => {
-                    Range::at_most(Predicate::Excluding(partial_version.into()))
+                    let v = Version::from(partial_version);
+                    Range::at_most(Predicate::Excluding(v.with_zero_build()))
                 }
                 (LessThanEquals, partial_version) => {
                     Range::at_most(Predicate::Including(partial_version.into()))
@@ -699,7 +700,7 @@ where
     move |input: &'a str| {
         context(
             "hyphenated",
-            map(tuple((&left, spaced_hypen, &right)), |(l, _, r)| (l, r)),
+            map(tuple((&left, spaced_hyphen, &right)), |(l, _, r)| (l, r)),
         )(input)
     }
 }
@@ -757,7 +758,7 @@ fn no_operation_followed_by_version<'a>(
     )(input)
 }
 
-fn spaced_hypen<'a>(input: &'a str) -> IResult<&'a str, (), SemverParseError<&'a str>> {
+fn spaced_hyphen<'a>(input: &'a str) -> IResult<&'a str, (), SemverParseError<&'a str>> {
     map(tuple((space0, tag("-"), space0)), |_| ())(input)
 }
 
@@ -908,7 +909,7 @@ mod intersection {
 
         let samples = vec![
             ("<=2.0.0", Some(">=1.2.3 <=2.0.0")),
-            ("<2.0.0", Some(">=1.2.3 <2.0.0")),
+            ("<2.0.0", Some(">=1.2.3 <2.0.0-0")),
             (">=2.0.0", Some(">=2.0.0")),
             (">2.0.0", Some(">2.0.0")),
             (">1.0.0", Some(">=1.2.3")),
@@ -928,7 +929,7 @@ mod intersection {
 
         let samples = vec![
             ("<=2.0.0", Some(">1.2.3 <=2.0.0")),
-            ("<2.0.0", Some(">1.2.3 <2.0.0")),
+            ("<2.0.0", Some(">1.2.3 <2.0.0-0")),
             (">=2.0.0", Some(">=2.0.0")),
             (">2.0.0", Some(">2.0.0")),
             ("2.0.0", Some("2.0.0")),
@@ -966,17 +967,17 @@ mod intersection {
         let base_range = v("<1.2.3");
 
         let samples = vec![
-            ("<=2.0.0", Some("<1.2.3")),
-            ("<2.0.0", Some("<1.2.3")),
+            ("<=2.0.0", Some("<1.2.3-0")),
+            ("<2.0.0", Some("<1.2.3-0")),
             (">=2.0.0", None),
-            (">=1.0.0", Some(">=1.0.0 <1.2.3")),
+            (">=1.0.0", Some(">=1.0.0 <1.2.3-0")),
             (">2.0.0", None),
             ("2.0.0", None),
             ("1.2.3", None),
             (">1.2.3", None),
-            ("<=1.2.3", Some("<1.2.3")),
+            ("<=1.2.3", Some("<1.2.3-0")),
             ("1.1.1", Some("1.1.1")),
-            ("<1.0.0", Some("<1.0.0")),
+            ("<1.0.0", Some("<1.0.0-0")),
         ];
 
         assert_ranges_match(base_range, samples);
@@ -997,7 +998,7 @@ mod intersection {
             (">1.2.3", None),
             ("<=1.2.3", Some("<=1.2.3")),
             ("1.1.1", Some("1.1.1")),
-            ("<1.0.0", Some("<1.0.0")),
+            ("<1.0.0", Some("<1.0.0-0")),
         ];
 
         assert_ranges_match(base_range, samples);
@@ -1007,7 +1008,7 @@ mod intersection {
     fn multiple() {
         let base_range = v("<1 || 3-4");
 
-        let samples = vec![("0.5 - 3.5.0", Some(">=0.5.0 <1.0.0||>=3.0.0 <=3.5.0"))];
+        let samples = vec![("0.5 - 3.5.0", Some(">=0.5.0 <1.0.0-0||>=3.0.0 <=3.5.0"))];
 
         assert_ranges_match(base_range, samples);
     }
@@ -1042,7 +1043,7 @@ mod difference {
 
         let samples = vec![
             ("<=2.0.0", Some(">2.0.0")),
-            ("<2.0.0", Some(">=2.0.0")),
+            ("<2.0.0", Some(">=2.0.0-0")),
             (">=2.0.0", Some(">=1.2.3 <2.0.0")),
             (">2.0.0", Some(">=1.2.3 <=2.0.0")),
             (">1.0.0", None),
@@ -1062,7 +1063,7 @@ mod difference {
 
         let samples = vec![
             ("<=2.0.0", Some(">2.0.0")),
-            ("<2.0.0", Some(">=2.0.0")),
+            ("<2.0.0", Some(">=2.0.0-0")),
             (">=2.0.0", Some(">1.2.3 <2.0.0")),
             (">2.0.0", Some(">1.2.3 <=2.0.0")),
             (">1.0.0", None),
@@ -1104,14 +1105,14 @@ mod difference {
         let samples = vec![
             ("<=2.0.0", None),
             ("<2.0.0", None),
-            (">=2.0.0", Some("<1.2.3")),
-            (">2.0.0", Some("<1.2.3")),
+            (">=2.0.0", Some("<1.2.3-0")),
+            (">2.0.0", Some("<1.2.3-0")),
             (">1.0.0", Some("<=1.0.0")),
-            (">1.2.3", Some("<1.2.3")),
+            (">1.2.3", Some("<1.2.3-0")),
             ("<=1.2.3", None),
-            ("1.1.1", Some("<1.1.1||>1.1.1 <1.2.3")),
-            ("<1.0.0", Some(">=1.0.0 <1.2.3")),
-            ("2.0.0", Some("<1.2.3")),
+            ("1.1.1", Some("<1.1.1||>1.1.1 <1.2.3-0")),
+            ("<1.0.0", Some(">=1.0.0-0 <1.2.3-0")),
+            ("2.0.0", Some("<1.2.3-0")),
         ];
 
         assert_ranges_match(base_range, samples);
@@ -1130,7 +1131,7 @@ mod difference {
             (">1.2.3", Some("<=1.2.3")),
             ("<=1.2.3", None),
             ("1.1.1", Some("<1.1.1||>1.1.1 <=1.2.3")),
-            ("<1.0.0", Some(">=1.0.0 <=1.2.3")),
+            ("<1.0.0", Some(">=1.0.0-0 <=1.2.3")),
             ("2.0.0", Some("<=1.2.3")),
         ];
 
@@ -1278,8 +1279,8 @@ mod tests {
         single_sided_lower_equals_bound_2 => [">=0.1.97", ">=0.1.97"],
         single_sided_lower_bound => [">1.0.0", ">1.0.0"],
         single_sided_upper_equals_bound => ["<=2.0.0", "<=2.0.0"],
-        single_sided_upper_equals_bound_with_minor => ["<=2.0", "<=2.0.0-0"],
-        single_sided_upper_bound => ["<2.0.0", "<2.0.0"],
+        single_sided_upper_equals_bound_with_minor => ["<=2.0", "<=2.0.0"],
+        single_sided_upper_bound => ["<2.0.0", "<2.0.0-0"],
         major_and_minor => ["2.3", ">=2.3.0 <2.4.0-0"],
         major_dot_x => ["2.x", ">=2.0.0 <3.0.0-0"],
         x_and_asterisk_version => ["2.x.x", ">=2.0.0 <3.0.0-0"],
@@ -1304,7 +1305,7 @@ mod tests {
         greater_than_one_dot_two => [">1.2", ">=1.3.0"],
         greater_than_with_prerelease => [">1.1.0-beta-10", ">1.1.0-beta-10"],
         either_one_version_or_the_other => ["0.1.20 || 1.2.4", "0.1.20||1.2.4"],
-        either_one_version_range_or_another => [">=0.2.3 || <0.0.1", ">=0.2.3||<0.0.1"],
+        either_one_version_range_or_another => [">=0.2.3 || <0.0.1", ">=0.2.3||<0.0.1-0"],
         either_x_version_works => ["1.2.x || 2.x", ">=1.2.0 <1.3.0-0||>=2.0.0 <3.0.0-0"],
         either_asterisk_version_works => ["1.2.* || 2.*", ">=1.2.0 <1.3.0-0||>=2.0.0 <3.0.0-0"],
         one_two_three_or_greater_than_four => ["1.2.3 || >4", "1.2.3||>=5.0.0"],
@@ -1318,8 +1319,8 @@ mod tests {
         whitespace_6 => ["<=   2.0.0", "<=2.0.0"],
         whitespace_7 => ["<= 2.0.0", "<=2.0.0"],
         whitespace_8 => ["<=  2.0.0", "<=2.0.0"],
-        whitespace_9 => ["<    2.0.0", "<2.0.0"],
-        whitespace_10 => ["<\t2.0.0", "<2.0.0"],
+        whitespace_9 => ["<    2.0.0", "<2.0.0-0"],
+        whitespace_10 => ["<\t2.0.0", "<2.0.0-0"],
         whitespace_11 => ["^ 1", ">=1.0.0 <2.0.0-0"],
         whitespace_12 => ["~> 1", ">=1.0.0 <2.0.0-0"],
         whitespace_13 => ["~ 1.0", ">=1.0.0 <1.1.0-0"],

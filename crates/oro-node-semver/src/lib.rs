@@ -159,6 +159,12 @@ pub struct Version {
 }
 
 impl Version {
+    fn with_zero_build(self) -> Self {
+        let mut copy = self.clone();
+        copy.pre_release.push(Identifier::Numeric(0));
+        copy
+    }
+
     pub fn parse<S: AsRef<str>>(input: S) -> Result<Version, SemverError> {
         let input = &input.as_ref()[..];
 
